@@ -1,41 +1,55 @@
 ---
-title: "Mapping Assignment"
-author: "PUT YOUR NAME HERE"
-date: "PUT THE DATE HERE"
+title: "Sample code for the mapping assignment"
 output: html_document
 ---
 
+For this sample code, we are going to use simplified shapefiles and Census data from the NHGIS. 
+
 # Loading and preparing the data
 
-```{r setup}
+In addition to the tidyverse, you will need the `sf` and `leaflet` packages.
+
+
+```{r}
 library(tidyverse)
 library(leaflet)
 library(sf)
+```
 
-# Load the data
+We are going to load numeric data from the Census, about places of birth for immigrants. Note that that there is no spatial information in this file. We couldn't map it if we tried. But, there are codes in the column called `GISJOIN` that will eventually let us join this to spatial data.
+
+```{r}
 nativity_1890 <- read_csv("census/nhgis0058_ds27_1890_state.csv")
+```
 
-# Load the shapefiles and de-project to lat/long representations
-states_1890 <- read_sf("shapefiles/simplified/US_state_1890.shp") %>% 
+We can also reading in a shapfile for state data. Shapefiles are a pain in the butt, because they are actually several files that have the same name but different extensions, like `.shp`, `.dbf`, and so on. We want the one that ends in `.shp`. Once we have read in the shapfile, it will look very much like a dataframe. Notice that it has a column named `GISJOIN` too, which is how we will connect it to the census data. It also contains other columns, like the area of the state. And most important it has a column called `geometry` which has the spatial information. There is one row for each state in this sf data frame. Because it functions like a data frame, we can do tidyverse things to it. Notice that below we use `filter()` to remove Alaska, because otherwise Alaska will make our maps weird. And we are also doing one critical thing, which is changing the projection of the spatial data so that it uses latitudes and longitudes. That's what the EPSG 4326 code is about. For now, suffice it to say that most R packages for mapping will expect the data to be in that format.
+
+```{r}
+states_1890 <- read_sf("shapefiles/US_state_1890.shp") %>% 
   st_transform(4326) %>% 
   filter(STATENAM != "Alaska Territory")
+```
 
-# Get the state centers
+The kind of data we have above are polygons, meaning the shape of the states. But we also want to be able to map points in addition to states. So we are going to get the center of states as point data. Notice that this is still a dataframe like the one above, but it contains a different kind of spatial data.
+
+```{r}
 centroids_1890 <- states_1890 %>% 
   st_centroid() 
 ```
 
-Some helper functions.
+If we want a quick glance at what the spatial data looks like, we can do this:
 
 ```{r}
-# Plot just the geometries
 plot(st_geometry(states_1890))
-# Plot a variable
-plot(states_1890["SHAPE_AREA"])
 ```
 
+Or the same thing, but for points instead of polygons.
 
-Examine the corresponding codebook (in this case, `census/nhgis0058_ds27_1890_state_codebook.txt`) to see what the column names mean and make the data more amenable to exploration. In this case, `AUM001` is the code for total population, and `AVL016` is the code for born in Germany. We will use that information to make a more useful table.
+```{r}
+plot(st_geometry(centroids_1890))
+```
+
+Examine the corresponding codebook (in this case, `census/nhgis0058_ds27_1890_state_codebook.txt`) to see what the column names mean and make the data more amenable to exploration. In this case, `AUM001` is the code for total population, and `AVL016` is the code for born in Germany. We will use that information to make a more useful table. Here we are renaming some of the columns. We are also (in the `mutate()` function) computing the percentage of people born in Germany. This is called normalizing; in this case we are normalizing by population. Of course there are more people born in German in New York City than there are people born in German in rural Wyoming, because there are just more people altogether. Normalizing the data, in this case to a percentage, lets us see a more meaningful pattern in the data.
 
 ```{r}
 german <- nativity_1890 %>% 
@@ -76,7 +90,8 @@ german %>%
   filter(german > 10000) %>% 
   ggplot(aes(x = state, y = german)) +
   geom_col() +
-  coord_flip()
+  coord_flip() +
+  scale_y_continuous(labels = scales::comma)
 ```
 
 ## Mapping
@@ -102,17 +117,16 @@ leaflet(german_points) %>%
   addMarkers()
 ```
 
-Markers are not very interesting. We want to set the radius of the circle to the square root of the population.
+Markers are not very interesting. We want to set the radius of the circle to the square root of the population. We have to write our own function to . (All of these concepts were introduced in the worksheets for this very purpose; I was not *just* torturing you.)
 
 ```{r}
 pop_scale <- function(x, max_radius = 20) {
-  x %>% 
-    sqrt() %>% 
-    scales::rescale_max(to = c(0, max_radius))
+  x %>%  sqrt() %>%  scales::rescale_max(to = c(0, max_radius))
 }
 pop_scale(german_points$german) %>% head()
 ```
 
+Notice the `~` here, which is the equivalent of using `aes()` in ggplot2 to say that we are mapping a property in the data to an aesthetic on the visualization. I've also added labels when you hover over a point, and popups when you click on one.
 
 ```{r}
 leaflet(german_points) %>% 
@@ -140,14 +154,14 @@ leaflet(german_shapes) %>%
   addPolygons(label = ~state)
 ```
 
-When we mapped the German population as points, we needed to scale the levels to pixels. Now we need to go from populations or percentages to colors. Leaflet provides a helper function.
+When we mapped the German population as points, we needed to scale the levels to pixels. Now we need to go from populations or percentages to colors. Leaflet provides a helper function. The names of the colors come from the [Color Brewer website](https://colorbrewer2.org/). We want a sequential color scale for this purpose, because the numbers are going from 0 to some positive number.
 
 ```{r}
 german_percent_colors <- colorNumeric("PuRd", domain = german$german_percent)
 german_percent_colors(german$german_percent) %>% head()
 ```
 
-Now we can fill in the map.
+Now we can fill in the code to make the map. We are also adding a legend.
 
 ```{r}
 leaflet(german_shapes) %>% 
@@ -165,4 +179,4 @@ leaflet(german_shapes) %>%
   )
 ```
 
-
+See the examples in Kieran Healy's book on data visualization for using ggplot2 to make static maps.
