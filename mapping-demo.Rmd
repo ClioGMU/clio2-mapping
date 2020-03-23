@@ -94,13 +94,47 @@ german %>%
   scale_y_continuous(labels = scales::comma)
 ```
 
-## Mapping
 
 ## Joining data
 
 Our state data is in two variables. `centroids_1890` has the latitude and longitude of the state centers, while `states_1890` has the polygons for the states. Our census data is in the `german` data frame, or more broadly in the `nativity_1890` data frame. We need to bring these two together with a `left_join()`. Luckily, NHGIS provides the `GISJOIN` column. Note: geometries on the left!
 
-## Points
+```{r}
+german_points <- centroids_1890 %>% 
+  left_join(german, by = "GISJOIN")
+
+german_polygons <- states_1890 %>% 
+  left_join(german, by = "GISJOIN")
+```
+
+## Points with ggplot2 and sf
+
+Assuming you have an sf object, ggplot will take care of plotting the geographic coordinates for you. In this instance, we are going to take the `german_points` data and make a map where the points on the map are scaled according to how many people born in Germany there were. But we are also going to put the state boundaries for 1890 under those points so that we have a layer to anchor our points in space. Notice that when we plot the points layer, we use `aes(size = german)` to scale the circles proportionate to the number of immigrants. We don't have to say what the `x` and `y` aesthetics are, because those are obvious in a map. The line using the `coord_sf()` function gives us a nice projection for the United States.
+
+```{r}
+ggplot() +
+  geom_sf(data = states_1890) +
+  geom_sf(data = german_points, aes(size = german), shape = 1, color = "red") +
+  coord_sf(crs = st_crs(102003)) +
+  theme_bw()
+```
+
+## Polygons with ggplot2 and sf
+
+The `german_polygons` data frame has the same census data, but it is suitable for mapping a choropleth (filled in polygons). This plot uses `aes(fill = german_percent)` to fill in the polygons. The `scale_fill_viridis_b()` option gives us a nice color palette.
+
+```{r}
+ggplot() +
+  geom_sf(data = german_polygons, aes(fill = german_percent)) +
+  coord_sf(crs = st_crs(102003)) +
+  scale_fill_viridis_b() +
+  theme_bw()
+```
+
+
+## Points with leaflet
+
+In addition to static maps with ggplot2, we can make interactive maps with leaflet.
 
 We will start with centroids since they are easier to map.
 
@@ -117,7 +151,7 @@ leaflet(german_points) %>%
   addMarkers()
 ```
 
-Markers are not very interesting. We want to set the radius of the circle to the square root of the population. We have to write our own function to . (All of these concepts were introduced in the worksheets for this very purpose; I was not *just* torturing you.)
+Markers are not very interesting. We want to set the radius of the circle to the square root of the population. We have to write our own function to do this, unlike in ggplot2 which did it for us automatically. (All of these concepts were introduced in the worksheets for this very purpose; I was not *just* torturing you.)
 
 ```{r}
 pop_scale <- function(x, max_radius = 20) {
@@ -137,7 +171,7 @@ leaflet(german_points) %>%
                    color = "red")
 ```
 
-## Polygons
+## Polygons with leaflet
 
 First we need to join the polygons to the German data.
 
@@ -178,5 +212,3 @@ leaflet(german_shapes) %>%
     opacity = 1
   )
 ```
-
-See the examples in Kieran Healy's book on data visualization for using ggplot2 to make static maps.
